@@ -75,6 +75,7 @@ function App() {
   const [newsData, setNewsData] = useState<any[]>([]);
   const [selectedNews, setSelectedNews] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [newsLoading, setNewsLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'disconnected' | 'sending' | 'received'>('connected');
   const [typingMessage, setTypingMessage] = useState<Message | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -145,8 +146,14 @@ function App() {
       const response = await sendQuery(payload);
       
       if (response.expiresAt) {
-        localStorage.setItem('sessionExpiry', response.expiresAt);
-        setSessionExpiry(response.expiresAt);
+        const expiryTime = new Date(response.expiresAt);
+        const now = new Date();
+        
+        // Only set expiry if it's in the future
+        if (expiryTime > now) {
+          localStorage.setItem('sessionExpiry', response.expiresAt);
+          setSessionExpiry(response.expiresAt);
+        }
       }
       
       setConnectionStatus('received');
@@ -193,20 +200,24 @@ function App() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const data = await fetchAlldocuments();
-      console.log("Fetched documents:", data);
-      const formattedNews = data?.data?.map((item: any) => {
-        const metadata = JSON.parse(item.metadata.category);
-        
-        return {
-          id: item.id,
-          title: metadata.title,
-          image: DUMMY_NEWS_IMAGE,
-          details: item.metadata.chunk_text
+      try {
+        const data = await fetchAlldocuments();
+        console.log("Fetched documents:", data);
+        const formattedNews = data?.data?.map((item: any) => {
+          const metadata = JSON.parse(item.metadata.category);
+          
+          return {
+            id: item.id,
+            title: metadata.title,
+            image: DUMMY_NEWS_IMAGE,
+            details: item.metadata.chunk_text
 
-        };
-      });
-      setNewsData(formattedNews);
+          };
+        });
+        setNewsData(formattedNews);
+      } finally {
+        setNewsLoading(false);
+      }
     };
     fetchData();
   }, []);
@@ -223,10 +234,7 @@ function App() {
       const diff = expiry.getTime() - now.getTime();
       
       if (diff <= 0) {
-        localStorage.removeItem('conversationGroups');
-        localStorage.removeItem('sessionExpiry');
-        setSessionExpiry(null);
-        setTimeRemaining('');
+        setTimeRemaining('Session expired');
         return false;
       }
       
@@ -254,8 +262,13 @@ function App() {
       <div className="w-full flex justify-center py-8 bg-white border-b border-gray-100">
         <div className="w-full max-w-7xl">
           <h1 className="text-4xl font-extrabold text-gray-800 mb-8 text-center tracking-wide underline decoration-purple-200">Today's Headlines</h1>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            {newsData.map(news => (
+          {newsLoading ? (
+            <div className="flex justify-center items-center py-20">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              {newsData.map(news => (
               <div key={news.id} className="flex flex-col bg-white rounded-xl shadow border border-gray-200 overflow-hidden hover:shadow-xl transition-shadow">
                 <img src={news.image} alt={news.title} className="w-full h-48 object-cover" />
                 <div className="flex-1 p-5 flex flex-col justify-between">
@@ -273,8 +286,9 @@ function App() {
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
         {/* News Modal */}
         {selectedNews && (
